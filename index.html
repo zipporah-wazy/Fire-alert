@@ -1,0 +1,772 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ESP32 Fire Detection Dashboard</title>
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- Icons -->
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
+    />
+
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        font-family: Arial, sans-serif;
+      }
+
+      body {
+        background: #0f172a;
+        color: white;
+        padding: 20px;
+      }
+
+      .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .header h1 {
+        font-size: 28px;
+        color: #38bdf8;
+      }
+
+      .status {
+        padding: 10px 18px;
+        border-radius: 8px;
+        font-weight: bold;
+        background: #1e293b;
+        border: 1px solid #334155;
+      }
+
+      .alert {
+        background: #dc2626 !important;
+        color: white;
+        animation: blink 1s infinite;
+      }
+
+      .safe {
+        background: #166534 !important;
+        color: white;
+      }
+
+      .warning {
+        background: #ca8a04 !important;
+        color: white;
+      }
+
+      @keyframes blink {
+        50% {
+          opacity: 0.6;
+        }
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+        gap: 20px;
+        margin-bottom: 20px;
+      }
+
+      .card {
+        background: #1e293b;
+        padding: 20px;
+        border-radius: 16px;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        transition: 0.3s;
+        border: 1px solid #334155;
+      }
+
+      .card:hover {
+        transform: translateY(-4px);
+      }
+
+      .card h3 {
+        margin-bottom: 15px;
+        color: #94a3b8;
+        font-size: 16px;
+      }
+
+      .value {
+        font-size: 30px;
+        font-weight: bold;
+        word-break: break-word;
+      }
+
+      .small-value {
+        font-size: 22px;
+        font-weight: bold;
+        word-break: break-word;
+      }
+
+      .subtext {
+        margin-top: 8px;
+        color: #94a3b8;
+        font-size: 13px;
+      }
+
+      .icon {
+        font-size: 28px;
+        margin-bottom: 12px;
+        color: #38bdf8;
+      }
+
+      .chart-container {
+        background: #1e293b;
+        padding: 20px;
+        border-radius: 16px;
+        margin-bottom: 20px;
+        border: 1px solid #334155;
+        overflow-x: auto;
+      }
+
+      .chart-title {
+        margin-bottom: 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .chart-title h2 {
+        font-size: 22px;
+      }
+
+      canvas {
+        width: 100% !important;
+        height: 400px !important;
+      }
+
+      .badge {
+        display: inline-block;
+        padding: 6px 10px;
+        border-radius: 999px;
+        font-size: 13px;
+        font-weight: bold;
+      }
+
+      .badge-safe {
+        background: #166534;
+        color: #dcfce7;
+      }
+
+      .badge-danger {
+        background: #991b1b;
+        color: #fee2e2;
+      }
+
+      .badge-warning {
+        background: #92400e;
+        color: #fef3c7;
+      }
+
+      .badge-info {
+        background: #075985;
+        color: #e0f2fe;
+      }
+
+      .table-wrapper {
+        overflow-x: auto;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        min-width: 900px;
+      }
+
+      th,
+      td {
+        padding: 12px;
+        text-align: left;
+        border-bottom: 1px solid #334155;
+        font-size: 14px;
+      }
+
+      th {
+        color: #38bdf8;
+        background: #0f172a;
+        position: sticky;
+        top: 0;
+        z-index: 1;
+      }
+
+      td {
+        color: #e2e8f0;
+      }
+
+      .footer {
+        text-align: center;
+        margin-top: 20px;
+        color: #94a3b8;
+      }
+
+      @media (max-width: 768px) {
+        .header {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+
+        .header h1 {
+          font-size: 23px;
+        }
+
+        .value {
+          font-size: 26px;
+        }
+
+        canvas {
+          height: 330px !important;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="header">
+      <h1><i class="fa-solid fa-fire"></i> ESP32 Fire Detection Dashboard</h1>
+      <div class="status" id="systemStatus">Loading...</div>
+    </div>
+
+    <!-- LIVE CARDS -->
+    <div class="grid">
+      <div class="card">
+        <div class="icon"><i class="fa-solid fa-smog"></i></div>
+        <h3>Smoke Level</h3>
+        <div class="value" id="smokeValue">--%</div>
+        <div class="subtext">ThingSpeak Field 1</div>
+      </div>
+
+      <div class="card">
+        <div class="icon">
+          <i class="fa-solid fa-temperature-three-quarters"></i>
+        </div>
+        <h3>Temperature</h3>
+        <div class="value" id="tempValue">--°C</div>
+        <div class="subtext">ThingSpeak Field 2</div>
+      </div>
+
+      <div class="card">
+        <div class="icon"><i class="fa-solid fa-droplet"></i></div>
+        <h3>Humidity</h3>
+        <div class="value" id="humValue">--%</div>
+        <div class="subtext">ThingSpeak Field 3</div>
+      </div>
+
+      <div class="card">
+        <div class="icon"><i class="fa-solid fa-fire-flame-curved"></i></div>
+        <h3>Flame Detection</h3>
+        <div class="small-value" id="flameValue">--</div>
+        <div class="subtext">ThingSpeak Field 4</div>
+      </div>
+
+      <div class="card">
+        <div class="icon"><i class="fa-solid fa-camera"></i></div>
+        <h3>Camera AI Alert</h3>
+        <div class="small-value" id="cameraValue">--</div>
+        <div class="subtext">ThingSpeak Field 5</div>
+      </div>
+
+      <div class="card">
+        <div class="icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
+        <h3>System Fire Alert</h3>
+        <div class="small-value" id="alertValue">--</div>
+        <div class="subtext">ThingSpeak Field 6</div>
+      </div>
+
+      <div class="card">
+        <div class="icon"><i class="fa-solid fa-brain"></i></div>
+        <h3>Camera AI Confidence</h3>
+        <div class="value" id="confidenceValue">--%</div>
+        <div class="subtext">ThingSpeak Field 7</div>
+      </div>
+
+      <div class="card">
+        <div class="icon"><i class="fa-solid fa-clock"></i></div>
+        <h3>Last Update</h3>
+        <div class="small-value" id="lastUpdateValue">--</div>
+        <div class="subtext">Latest ThingSpeak feed time</div>
+      </div>
+    </div>
+
+    <!-- MAIN SENSOR CHART -->
+    <div class="chart-container">
+      <div class="chart-title">
+        <h2>Sensor Analytics</h2>
+        <span class="badge badge-info"
+          >Smoke / Temperature / Humidity / Confidence</span
+        >
+      </div>
+      <canvas id="sensorChart"></canvas>
+    </div>
+
+    <!-- STATUS CHART -->
+    <div class="chart-container">
+      <div class="chart-title">
+        <h2>Status Monitoring</h2>
+        <span class="badge badge-info">Flame / Camera AI / System Alert</span>
+      </div>
+      <canvas id="statusChart"></canvas>
+    </div>
+
+    <!-- LATEST STATUS SUMMARY -->
+    <div class="chart-container">
+      <div class="chart-title">
+        <h2>Latest Status Summary</h2>
+        <span id="latestSummaryBadge" class="badge badge-info"
+          >Waiting for data</span
+        >
+      </div>
+
+      <div class="grid">
+        <div>
+          <h3 style="color: #94a3b8; margin-bottom: 10px">Environment</h3>
+          <p id="environmentSummary">Loading...</p>
+        </div>
+
+        <div>
+          <h3 style="color: #94a3b8; margin-bottom: 10px">Detection Status</h3>
+          <p id="detectionSummary">Loading...</p>
+        </div>
+
+        <div>
+          <h3 style="color: #94a3b8; margin-bottom: 10px">Alert System</h3>
+          <p id="alertSummary">Loading...</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- DATA HISTORY TABLE -->
+    <div class="chart-container">
+      <div class="chart-title">
+        <h2>Recent ThingSpeak Uploads</h2>
+        <span class="badge badge-info">All uploaded fields displayed</span>
+      </div>
+
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Smoke</th>
+              <th>Temperature</th>
+              <th>Humidity</th>
+              <th>Flame</th>
+              <th>Camera AI</th>
+              <th>System Alert</th>
+              <th>AI Confidence</th>
+            </tr>
+          </thead>
+          <tbody id="historyTableBody">
+            <tr>
+              <td colspan="8">Loading ThingSpeak data...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="footer">
+      ESP32 + ESP32-CAM + ThingSpeak IoT Monitoring System
+    </div>
+
+    <script>
+      // =============================
+      // THINGSPEAK CONFIG
+      // Keep your credentials unchanged.
+      // =============================
+      const CHANNEL_ID = "3375349";
+      const READ_API_KEY = "PX39MVSPXLCZK55J";
+
+      // =============================
+      // HELPERS
+      // =============================
+      function numberValue(value, fallback = 0) {
+        const parsed = parseFloat(value);
+        return isNaN(parsed) ? fallback : parsed;
+      }
+
+      function statusValue(value) {
+        const parsed = parseInt(value || 0);
+        return parsed === 1 ? 1 : 0;
+      }
+
+      function flameStatus(value) {
+        return statusValue(value) === 1 ? "🔥 Flame Detected" : "✅ No Flame";
+      }
+
+      function cameraStatus(value) {
+        return statusValue(value) === 1
+          ? "📷 AI Fire/Smoke Detected"
+          : "✅ Camera Normal";
+      }
+
+      function systemAlertStatus(value) {
+        return statusValue(value) === 1
+          ? "🚨 Fire Alert Active"
+          : "✅ System Safe";
+      }
+
+      function badgeClass(value) {
+        return statusValue(value) === 1
+          ? "badge badge-danger"
+          : "badge badge-safe";
+      }
+
+      function formatPercent(value) {
+        return numberValue(value).toFixed(1) + "%";
+      }
+
+      function formatTemp(value) {
+        return numberValue(value).toFixed(1) + "°C";
+      }
+
+      function formatTime(dateString) {
+        if (!dateString) return "--";
+        return new Date(dateString).toLocaleString();
+      }
+
+      function formatShortTime(dateString) {
+        if (!dateString) return "--";
+        return new Date(dateString).toLocaleTimeString();
+      }
+
+      // =============================
+      // CHART SETUP
+      // =============================
+      const sensorCtx = document.getElementById("sensorChart").getContext("2d");
+
+      const sensorChart = new Chart(sensorCtx, {
+        type: "line",
+        data: {
+          labels: [],
+          datasets: [
+            {
+              label: "Smoke %",
+              data: [],
+              borderWidth: 3,
+              tension: 0.4,
+            },
+            {
+              label: "Temperature °C",
+              data: [],
+              borderWidth: 3,
+              tension: 0.4,
+            },
+            {
+              label: "Humidity %",
+              data: [],
+              borderWidth: 3,
+              tension: 0.4,
+            },
+            {
+              label: "Camera Confidence %",
+              data: [],
+              borderWidth: 3,
+              tension: 0.4,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              labels: {
+                color: "white",
+              },
+            },
+            tooltip: {
+              callbacks: {
+                label: function (context) {
+                  return context.dataset.label + ": " + context.raw;
+                },
+              },
+            },
+          },
+          scales: {
+            x: {
+              ticks: { color: "white" },
+              grid: { color: "#334155" },
+            },
+            y: {
+              ticks: { color: "white" },
+              grid: { color: "#334155" },
+              beginAtZero: true,
+            },
+          },
+        },
+      });
+
+      // =============================
+      // STATUS CHART
+      // =============================
+      const statusCtx = document.getElementById("statusChart").getContext("2d");
+
+      const statusChart = new Chart(statusCtx, {
+        type: "bar",
+        data: {
+          labels: [],
+          datasets: [
+            {
+              label: "Flame Status",
+              data: [],
+              borderWidth: 1,
+            },
+            {
+              label: "Camera AI Status",
+              data: [],
+              borderWidth: 1,
+            },
+            {
+              label: "System Alert Status",
+              data: [],
+              borderWidth: 1,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              labels: {
+                color: "white",
+              },
+            },
+            tooltip: {
+              callbacks: {
+                label: function (context) {
+                  const statusText =
+                    context.raw === 1 ? "Active / Detected" : "Normal / Safe";
+                  return context.dataset.label + ": " + statusText;
+                },
+              },
+            },
+          },
+          scales: {
+            x: {
+              ticks: { color: "white" },
+              grid: { color: "#334155" },
+            },
+            y: {
+              ticks: {
+                color: "white",
+                stepSize: 1,
+                callback: function (value) {
+                  if (value === 0) return "Normal";
+                  if (value === 1) return "Active";
+                  return value;
+                },
+              },
+              grid: { color: "#334155" },
+              beginAtZero: true,
+              max: 1,
+            },
+          },
+        },
+      });
+
+      // =============================
+      // FETCH DATA
+      // =============================
+      async function fetchThingSpeakData() {
+        try {
+          const url = `https://api.thingspeak.com/channels/${CHANNEL_ID}/feeds.json?api_key=${READ_API_KEY}&results=20`;
+
+          const response = await fetch(url);
+          const data = await response.json();
+
+          const feeds = data.feeds;
+
+          if (!feeds || feeds.length === 0) {
+            document.getElementById("systemStatus").innerHTML =
+              "⚠ No Data Found";
+            document.getElementById("systemStatus").className =
+              "status warning";
+            return;
+          }
+
+          // Latest Feed
+          const latest = feeds[feeds.length - 1];
+
+          const smoke = numberValue(latest.field1);
+          const temp = numberValue(latest.field2);
+          const hum = numberValue(latest.field3);
+          const flame = statusValue(latest.field4);
+          const camAlert = statusValue(latest.field5);
+          const fireAlert = statusValue(latest.field6);
+          const confidence = numberValue(latest.field7);
+
+          // =============================
+          // UPDATE LIVE VALUES
+          // =============================
+          document.getElementById("smokeValue").innerHTML =
+            smoke.toFixed(1) + "%";
+
+          document.getElementById("tempValue").innerHTML =
+            temp.toFixed(1) + "°C";
+
+          document.getElementById("humValue").innerHTML = hum.toFixed(1) + "%";
+
+          document.getElementById("flameValue").innerHTML = flameStatus(flame);
+
+          document.getElementById("cameraValue").innerHTML =
+            cameraStatus(camAlert);
+
+          document.getElementById("alertValue").innerHTML =
+            systemAlertStatus(fireAlert);
+
+          document.getElementById("confidenceValue").innerHTML =
+            confidence.toFixed(1) + "%";
+
+          document.getElementById("lastUpdateValue").innerHTML = formatTime(
+            latest.created_at,
+          );
+
+          // =============================
+          // SYSTEM STATUS
+          // =============================
+          const status = document.getElementById("systemStatus");
+
+          if (fireAlert === 1) {
+            status.innerHTML = "🚨 FIRE ALERT ACTIVE";
+            status.className = "status alert";
+          } else if (camAlert === 1 || flame === 1) {
+            status.innerHTML = "⚠ FIRE INDICATOR DETECTED";
+            status.className = "status warning";
+          } else {
+            status.innerHTML = "✅ SYSTEM NORMAL";
+            status.className = "status safe";
+          }
+
+          // =============================
+          // LATEST STATUS SUMMARY
+          // =============================
+          const latestSummaryBadge =
+            document.getElementById("latestSummaryBadge");
+
+          if (fireAlert === 1) {
+            latestSummaryBadge.innerHTML = "Danger";
+            latestSummaryBadge.className = "badge badge-danger";
+          } else if (camAlert === 1 || flame === 1) {
+            latestSummaryBadge.innerHTML = "Warning";
+            latestSummaryBadge.className = "badge badge-warning";
+          } else {
+            latestSummaryBadge.innerHTML = "Safe";
+            latestSummaryBadge.className = "badge badge-safe";
+          }
+
+          document.getElementById("environmentSummary").innerHTML =
+            `Smoke is <strong>${smoke.toFixed(1)}%</strong>, temperature is <strong>${temp.toFixed(1)}°C</strong>, and humidity is <strong>${hum.toFixed(1)}%</strong>.`;
+
+          document.getElementById("detectionSummary").innerHTML =
+            `${flameStatus(flame)}<br>${cameraStatus(camAlert)}<br>Camera confidence: <strong>${confidence.toFixed(1)}%</strong>.`;
+
+          document.getElementById("alertSummary").innerHTML =
+            `${systemAlertStatus(fireAlert)}<br>Last update: <strong>${formatTime(latest.created_at)}</strong>.`;
+
+          // =============================
+          // CHART DATA
+          // =============================
+          const labels = feeds.map((feed) => formatShortTime(feed.created_at));
+
+          sensorChart.data.labels = labels;
+
+          sensorChart.data.datasets[0].data = feeds.map((feed) =>
+            numberValue(feed.field1),
+          );
+
+          sensorChart.data.datasets[1].data = feeds.map((feed) =>
+            numberValue(feed.field2),
+          );
+
+          sensorChart.data.datasets[2].data = feeds.map((feed) =>
+            numberValue(feed.field3),
+          );
+
+          sensorChart.data.datasets[3].data = feeds.map((feed) =>
+            numberValue(feed.field7),
+          );
+
+          sensorChart.update();
+
+          // =============================
+          // STATUS HISTORY
+          // =============================
+          statusChart.data.labels = labels;
+
+          statusChart.data.datasets[0].data = feeds.map((feed) =>
+            statusValue(feed.field4),
+          );
+
+          statusChart.data.datasets[1].data = feeds.map((feed) =>
+            statusValue(feed.field5),
+          );
+
+          statusChart.data.datasets[2].data = feeds.map((feed) =>
+            statusValue(feed.field6),
+          );
+
+          statusChart.update();
+
+          // =============================
+          // HISTORY TABLE
+          // =============================
+          const tableBody = document.getElementById("historyTableBody");
+          tableBody.innerHTML = "";
+
+          [...feeds].reverse().forEach((feed) => {
+            const row = document.createElement("tr");
+
+            const rowFlame = statusValue(feed.field4);
+            const rowCamera = statusValue(feed.field5);
+            const rowAlert = statusValue(feed.field6);
+
+            row.innerHTML = `
+        <td>${formatTime(feed.created_at)}</td>
+        <td>${formatPercent(feed.field1)}</td>
+        <td>${formatTemp(feed.field2)}</td>
+        <td>${formatPercent(feed.field3)}</td>
+        <td><span class="${badgeClass(rowFlame)}">${flameStatus(rowFlame)}</span></td>
+        <td><span class="${badgeClass(rowCamera)}">${cameraStatus(rowCamera)}</span></td>
+        <td><span class="${badgeClass(rowAlert)}">${systemAlertStatus(rowAlert)}</span></td>
+        <td>${formatPercent(feed.field7)}</td>
+      `;
+
+            tableBody.appendChild(row);
+          });
+        } catch (error) {
+          console.error("Error fetching data:", error);
+
+          document.getElementById("systemStatus").innerHTML =
+            "⚠ Connection Error";
+
+          document.getElementById("systemStatus").className = "status warning";
+
+          document.getElementById("historyTableBody").innerHTML =
+            `<tr><td colspan="8">Unable to fetch ThingSpeak data. Check internet connection, channel ID, or read API key.</td></tr>`;
+        }
+      }
+
+      // =============================
+      // AUTO REFRESH
+      // =============================
+      fetchThingSpeakData();
+
+      setInterval(fetchThingSpeakData, 15000);
+    </script>
+  </body>
+</html>
